@@ -1077,8 +1077,12 @@ html.lock,html.lock body{overflow:hidden}
         </div>
       </div>
 
+      <!-- honeypot: hidden from people, bots fill it -->
+      <input type="text" name="honeypot" id="f-hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+
       <div class="form-cta">
         <button class="cta" type="submit" id="submitBtn"><span class="cta-main">Audit my app</span><span class="cta-sub">$499 · Report in 48 hours</span></button>
+        <p class="fe" id="submitErr" role="alert">Something went wrong sending your details. Please try again.</p>
       </div>
     </form>
 
@@ -1098,6 +1102,30 @@ html.lock,html.lock body{overflow:hidden}
      checkoutUrl: the $499 audit checkout link (Dodo Payments or Stripe). When set, the form saves the lead, then sends the buyer to checkout.
      leadWebhook: an endpoint that stores every submitted lead before checkout, so failed payments can be followed up. */
   var CONFIG = { checkoutUrl: "", leadWebhook: "" };
+
+  /* ===== Getnos Desk lead submit: one call per form submit ===== */
+  var DESK_URL = "https://deskbackend.getnos.io/v1/lead";
+  var DESK_KEY = "lh_zFV_RSGDpCy0UowG5_1o0GpNaZYV_bo3vvF6JB72Nts";
+  var submitting = false;
+  function submitLead(fields){
+    if (submitting) return Promise.resolve({ duplicate: true, skipped: true });
+    submitting = true;
+    var body = { form: "contact", honeypot: fields.honeypot || "" };
+    for (var k in fields) body[k] = fields[k];
+    return fetch(DESK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + DESK_KEY },
+      body: JSON.stringify(body),
+      keepalive: true
+    }).then(function(res){
+      return res.json().catch(function(){ return {}; }).then(function(data){
+        // Desk ignores identical payloads for ~15 min — treat as success
+        if (data.duplicate) return data;
+        if (!res.ok) throw new Error(data.message || "Lead submit failed (" + res.status + ")");
+        return data;
+      });
+    }).then(function(d){ submitting = false; return d; }, function(err){ submitting = false; throw err; });
+  }
 
   var $ = function(s, r){ return (r || document).querySelector(s); };
   var $$ = function(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
@@ -1296,6 +1324,7 @@ html.lock,html.lock body{overflow:hidden}
   form.addEventListener("submit", function(e){
     e.preventDefault();
     $$(".fg.bad").forEach(function(g){ g.classList.remove("bad"); });
+    $("#submitErr").style.display = "";
     var bad = checkForm();
     if (bad.length){
       bad.forEach(function(id){ var g = document.getElementById(id); g.classList.add("bad"); if (!reduce){ g.classList.remove("shake"); void g.offsetWidth; g.classList.add("shake"); } });
@@ -1314,24 +1343,32 @@ html.lock,html.lock body{overflow:hidden}
       submitted_at: new Date().toISOString()
     };
     var u = utm(); for (var k in u) data[k] = u[k];
-    var btn = $("#submitBtn"); btn.classList.add("loading");
+    var btn = $("#submitBtn");
+    if (btn.classList.contains("loading")) return;
+    btn.classList.add("loading");
     if (CONFIG.leadWebhook){
       try { fetch(CONFIG.leadWebhook, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(data), keepalive: true }); } catch(err){}
     }
-    if (CONFIG.checkoutUrl){
-      try {
-        var c = new URL(CONFIG.checkoutUrl);
-        c.searchParams.set("email", data.email); c.searchParams.set("app_url", data.url);
-        setTimeout(function(){ window.location.href = c.toString(); }, 350);
-        return;
-      } catch(err){}
-    }
-    setTimeout(function(){
+    var lead = { honeypot: $("#f-hp").value, source: data.utm_source || "Website", page: location.href, subject: "New Launch Ready Code Leads" };
+    for (var j in data) lead[j] = data[j];
+    submitLead(lead).then(function(){
+      if (CONFIG.checkoutUrl){
+        try {
+          var c = new URL(CONFIG.checkoutUrl);
+          c.searchParams.set("email", data.email); c.searchParams.set("app_url", data.url);
+          window.location.href = c.toString();
+          return;
+        } catch(err){}
+      }
       btn.classList.remove("loading");
       form.hidden = true; okPanel.hidden = false; $("#shTitle").hidden = true;
       $(".sheet").scrollTop = 0;
       try { $(".ghost", okPanel).focus({ preventScroll: true }); } catch(err){}
-    }, 700);
+    }, function(err){
+      try { console.error(err); } catch(e2){}
+      btn.classList.remove("loading");
+      $("#submitErr").style.display = "block";
+    });
   });
 
   /* ===== Frozen bottom bar: shows once the hero CTA is out of view ===== */
