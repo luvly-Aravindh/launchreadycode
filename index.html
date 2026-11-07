@@ -1447,7 +1447,49 @@ html.lock,html.lock body{overflow:hidden}
 
   /* ----- form helpers ----- */
   var URL_RE = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(:\d{2,5})?(\/\S*)?$/i;
-  var MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  var MAIL_RE = /^[a-z0-9](?:[a-z0-9._%+-]{0,62}[a-z0-9_])?@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/i;
+
+  /* ----- email check: format, disposable, fake ----- */
+  var DISPOSABLE = ("mailinator.com mailinator.net mailinator.org guerrillamail.com guerrillamail.net guerrillamail.org guerrillamail.biz guerrillamail.de guerrillamailblock.com sharklasers.com grr.la pokemail.net spam4.me "
+    + "10minutemail.com 10minutemail.net 10minemail.com 10minutemail.co.uk 20minutemail.com 30minutemail.com 60minutemail.com tempmail.com temp-mail.org temp-mail.io tempmail.net tempmail.dev tempmailo.com tempmail.plus tempmailaddress.com tempm.com tempr.email tempinbox.com tempmail.email "
+    + "throwawaymail.com throwam.com trashmail.com trashmail.net trashmail.de trashmail.me trash-mail.com trashmail.io mytrashmail.com yopmail.com yopmail.net yopmail.fr cool.fr.nf jetable.org jetable.fr.nf nospam.ze.tc "
+    + "getnada.com nada.email dispostable.com discard.email discardmail.com discardmail.de fakeinbox.com fakemail.net fakemailgenerator.com emailondeck.com maildrop.cc mailnesia.com mailcatch.com mintemail.com mohmal.com "
+    + "mailpoof.com moakt.com tmail.ws tmpmail.org tmpmail.net tmpeml.com emailfake.com email-fake.com fake-mail.net burnermail.io spambox.us spamgourmet.com spamex.com spambog.com spamfree24.org mailexpire.com "
+    + "incognitomail.org incognitomail.com anonbox.net anonymbox.com mailforspam.com mailmetrash.com meltmail.com deadaddress.com dodgit.com e4ward.com getairmail.com harakirimail.com inboxkitten.com mailsac.com "
+    + "mvrht.com mytemp.email owlymail.com shitmail.me spamdecoy.net tempail.com tempemail.net temporaryemail.net temporaryinbox.com throwawayemailaddress.com wegwerfmail.de wegwerfmail.net einrot.com "
+    + "crazymailing.com mail-temp.com mail.tm mailto.plus fexpost.com fexbox.org rover.info dropmail.me emltmp.com 1secmail.com 1secmail.net 1secmail.org esiix.com wwjmp.com xojxe.com yoggm.com "
+    + "kzccv.com qiott.com vjuum.com laafd.com txcct.com zwoho.com byom.de linshiyouxiang.net minuteinbox.com luxusmail.org inboxbear.com mailbox92.biz smailpro.com tempmailer.com tempmail.us.com "
+    + "guerillamail.com guerillamail.org armyspy.com cuvox.de dayrep.com einrot.de fleckens.hu gustr.com jourrapide.com rhyta.com superrito.com teleworm.us").split(" ");
+  var FAKE_DOMAINS = ("example.com example.org example.net test.com test.org test.net testing.com domain.com sample.com fake.com fakeemail.com noemail.com nomail.com none.com "
+    + "invalid.com abc.com xyz.com asdf.com qwerty.com localhost.com company.com yourcompany.com yourdomain.com mydomain.com website.com").split(" ");
+  var FAKE_LOCALS = /^(test|testing|tester|fake|asdf+|qwerty|abc|abcd|abcdef|xyz|xxx+|aaa+|sample|example|demo|dummy|noreply|no-reply|donotreply|nobody|none|null|na|n\/a|user|email|mail|admin123|foo|bar|foobar|123+|1234+|12345+|hello|hi)$/i;
+  var TYPOS = { "gmial.com":"gmail.com", "gmai.com":"gmail.com", "gamil.com":"gmail.com", "gmail.co":"gmail.com", "gmail.con":"gmail.com", "gmal.com":"gmail.com", "gnail.com":"gmail.com", "gmaill.com":"gmail.com",
+    "hotmial.com":"hotmail.com", "hotmai.com":"hotmail.com", "hotmail.con":"hotmail.com", "yahooo.com":"yahoo.com", "yaho.com":"yahoo.com", "yahoo.con":"yahoo.com", "outlok.com":"outlook.com", "outlook.con":"outlook.com", "iclod.com":"icloud.com" };
+  function emailError(email){
+    if (!email) return "Enter your email address";
+    if (!MAIL_RE.test(email) || /\.\./.test(email)) return "Enter a valid email address";
+    var parts = email.toLowerCase().split("@"), local = parts[0], domain = parts[1];
+    if (TYPOS[domain]) return "Did you mean " + local + "@" + TYPOS[domain] + "?";
+    var hit = function(list){ return list.some(function(d){ return domain === d || domain.slice(-(d.length + 1)) === "." + d; }); };
+    if (hit(DISPOSABLE) || /(^|[.-])(temp|tmp|trash|throwaway|disposable|burner|fake|spam)[a-z0-9-]*mail/.test(domain) || /(^|\.)(\d+)?min(ute)?s?mail/.test(domain))
+      return "Disposable email addresses aren't allowed. Please use your real email";
+    if (hit(FAKE_DOMAINS) || /\.(test|example|invalid|localhost|local)$/.test(domain) || FAKE_LOCALS.test(local.replace(/\+.*$/, "")) || /^(.)\1{3,}$/.test(local))
+      return "This looks like a placeholder email. Please enter your real email";
+    return "";
+  }
+  function checkEmailField(inputId, groupId){
+    var g = document.getElementById(groupId), err = emailError($("#" + inputId).value.trim());
+    if (err) $(".fe", g).textContent = err;
+    return err;
+  }
+  [["f-email", "g-email"], ["o-email", "g-oemail"]].forEach(function(p){
+    var el = document.getElementById(p[0]);
+    el.addEventListener("blur", function(){
+      if (!el.value.trim()) return;
+      var g = document.getElementById(p[1]);
+      if (checkEmailField(p[0], p[1])) g.classList.add("bad"); else g.classList.remove("bad");
+    });
+  });
   function flag(form, bad){
     $$(".fg.bad", form).forEach(function(g){ g.classList.remove("bad"); });
     if (!bad.length) return false;
@@ -1545,7 +1587,7 @@ html.lock,html.lock body{overflow:hidden}
     e.preventDefault();
     var url = cleanUrl($("#o-url").value), email = $("#o-email").value.trim(), st = $("input[name=stage]:checked"), bad = [];
     if (!URL_RE.test(url)) bad.push("g-ourl");
-    if (!MAIL_RE.test(email)) bad.push("g-oemail");
+    if (checkEmailField("o-email", "g-oemail")) bad.push("g-oemail");
     if (!st) bad.push("g-stage");
     if (flag(orderForm, bad)) return;
     var btn = $("#orderBtn"), msg = $("#orderMsg");
@@ -1595,7 +1637,7 @@ html.lock,html.lock body{overflow:hidden}
     e.preventDefault();
     var url = cleanUrl($("#f-url").value), email = $("#f-email").value.trim(), bad = [];
     if (!URL_RE.test(url)) bad.push("g-url");
-    if (!MAIL_RE.test(email)) bad.push("g-email");
+    if (checkEmailField("f-email", "g-email")) bad.push("g-email");
     if (flag(scanForm, bad)) return;
     runScan(url, email, $("#f-own").checked, true);
   });
